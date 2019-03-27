@@ -1,17 +1,17 @@
 # 深度学习入门
 
 [![Build Status](https://travis-ci.org/PaddlePaddle/book.svg?branch=develop)](https://travis-ci.org/PaddlePaddle/book)
-[![Documentation Status](https://img.shields.io/badge/docs-latest-brightgreen.svg?style=flat)](http://book.paddlepaddle.org/)
-[![Documentation Status](https://img.shields.io/badge/中文文档-最新-brightgreen.svg)](http://book.paddlepaddle.org/index.cn.html)
+[![Documentation Status](https://img.shields.io/badge/docs-latest-brightgreen.svg?style=flat)](https://github.com/PaddlePaddle/book/blob/develop/README.md)
+[![Documentation Status](https://img.shields.io/badge/中文文档-最新-brightgreen.svg)](https://github.com/PaddlePaddle/book/blob/develop/README.cn.md)
 
-1. [新手入门](http://book.paddlepaddle.org/01.fit_a_line/index.cn.html)
-1. [识别数字](http://book.paddlepaddle.org/02.recognize_digits/index.cn.html)
-1. [图像分类](http://book.paddlepaddle.org/03.image_classification/index.cn.html)
-1. [词向量](http://book.paddlepaddle.org/04.word2vec/index.cn.html)
-1. [个性化推荐](http://book.paddlepaddle.org/05.recommender_system/index.cn.html)
-1. [情感分析](http://book.paddlepaddle.org/06.understand_sentiment/index.cn.html)
-1. [语义角色标注](http://book.paddlepaddle.org/07.label_semantic_roles/index.cn.html)
-1. [机器翻译](http://book.paddlepaddle.org/08.machine_translation/index.cn.html)
+1. [线性回归](http://www.paddlepaddle.org/documentation/book/zh/develop/01.fit_a_line/index.cn.html)
+1. [识别数字](http://www.paddlepaddle.org/documentation/book/zh/develop/02.recognize_digits/index.cn.html)
+1. [图像分类](http://www.paddlepaddle.org/documentation/book/zh/develop/03.image_classification/index.cn.html)
+1. [词向量](http://www.paddlepaddle.org/documentation/book/zh/develop/04.word2vec/index.cn.html)
+1. [个性化推荐](http://www.paddlepaddle.org/documentation/book/zh/develop/05.recommender_system/index.cn.html)
+1. [情感分析](http://www.paddlepaddle.org/documentation/book/zh/develop/06.understand_sentiment/index.cn.html)
+1. [语义角色标注](http://www.paddlepaddle.org/documentation/book/zh/develop/07.label_semantic_roles/index.cn.html)
+1. [机器翻译](http://www.paddlepaddle.org/documentation/book/zh/develop/08.machine_translation/index.cn.html)
 
 更多学习内容请访问PaddlePaddle[视频课堂](http://bit.baidu.com/Course/datalist/column/117.html)。
 
@@ -29,10 +29,10 @@ docker run -d -p 8888:8888 paddlepaddle/book
 
 会从DockerHub.com下载和运行本书的Docker image。阅读和在线编辑本书请在浏览器里访问 http://localhost:8888 。
 
-如果您访问DockerHub.com很慢，可以试试我们的另一个镜像docker.paddlepaddle.org：
+如果您访问DockerHub.com很慢，可以试试我们的另一个镜像hub.baidubce.com：
 
 ```bash
-docker run -d -p 8888:8888 docker.paddlepaddle.org/book
+docker run -d -p 8888:8888 hub.baidubce.com/paddlepaddle/book
 ```
 
 ### 使用GPU训练
@@ -46,17 +46,17 @@ nvidia-docker run -d -p 8888:8888 paddlepaddle/book:latest-gpu
 或者使用国内的镜像请运行：
 
 ```bash
-nvidia-docker run -d -p 8888:8888 docker.paddlepaddle.org/book:latest-gpu
+nvidia-docker run -d -p 8888:8888 hub.baidubce.com/paddlepaddle/book:latest-gpu
 ```
 
 还需要将以下代码
 ```python
-paddle.init(use_gpu=False, trainer_count=1)
+use_cuda = False
 ```
 
 改成：
 ```python
-paddle.init(use_gpu=True, trainer_count=1)
+use_cuda = True
 ```
 
 
@@ -69,4 +69,4 @@ paddle.init(use_gpu=True, trainer_count=1)
 **Note:** We also provide [English Readme](https://github.com/PaddlePaddle/book/blob/develop/README.md) for PaddlePaddle book.
 
 
-<a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/"><img alt="知识共享许可协议" style="border-width:0" src="https://i.creativecommons.org/l/by-sa/4.0/88x31.png" /></a><br /><span xmlns:dct="http://purl.org/dc/terms/" href="http://purl.org/dc/dcmitype/Text" property="dct:title" rel="dct:type">本教程</span> 由 <a xmlns:cc="http://creativecommons.org/ns#" href="http://book.paddlepaddle.org" property="cc:attributionName" rel="cc:attributionURL">PaddlePaddle</a> 创作，采用 <a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/">知识共享 署名-相同方式共享 4.0 国际 许可协议</a>进行许可。
+<a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/"><img alt="知识共享许可协议" style="border-width:0" src="https://i.creativecommons.org/l/by-sa/4.0/88x31.png" /></a><br /><span xmlns:dct="http://purl.org/dc/terms/" href="http://purl.org/dc/dcmitype/Text" property="dct:title" rel="dct:type">本教程</span> 由 <a xmlns:cc="http://creativecommons.org/ns#" href="http://www.paddlepaddle.org/" property="cc:attributionName" rel="cc:attributionURL">PaddlePaddle</a> 创作，采用 <a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/">知识共享 署名-相同方式共享 4.0 国际 许可协议</a>进行许可。

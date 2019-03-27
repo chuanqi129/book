@@ -1,129 +1,217 @@
+#   Copyright (c) 2018 PaddlePaddle Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from __future__ import print_function
+
 import os
 from PIL import Image
-import numpy as np
-import paddle.v2 as paddle
+import numpy
+import paddle
+import paddle.fluid as fluid
 
-with_gpu = os.getenv('WITH_GPU', '0') != '0'
-
-
-def softmax_regression(img):
-    predict = paddle.layer.fc(
-        input=img, size=10, act=paddle.activation.Softmax())
-    return predict
+BATCH_SIZE = 64
+PASS_NUM = 5
 
 
-def multilayer_perceptron(img):
-    # The first fully-connected layer
-    hidden1 = paddle.layer.fc(input=img, size=128, act=paddle.activation.Relu())
-    # The second fully-connected layer and the according activation function
-    hidden2 = paddle.layer.fc(
-        input=hidden1, size=64, act=paddle.activation.Relu())
-    # The thrid fully-connected layer, note that the hidden size should be 10,
-    # which is the number of unique digits
-    predict = paddle.layer.fc(
-        input=hidden2, size=10, act=paddle.activation.Softmax())
-    return predict
+def loss_net(hidden, label):
+    prediction = fluid.layers.fc(input=hidden, size=10, act='softmax')
+    loss = fluid.layers.cross_entropy(input=prediction, label=label)
+    avg_loss = fluid.layers.mean(loss)
+    acc = fluid.layers.accuracy(input=prediction, label=label)
+    return prediction, avg_loss, acc
 
 
-def convolutional_neural_network(img):
-    # first conv layer
-    conv_pool_1 = paddle.networks.simple_img_conv_pool(
+def multilayer_perceptron(img, label):
+    img = fluid.layers.fc(input=img, size=200, act='tanh')
+    hidden = fluid.layers.fc(input=img, size=200, act='tanh')
+    return loss_net(hidden, label)
+
+
+def softmax_regression(img, label):
+    return loss_net(img, label)
+
+
+def convolutional_neural_network(img, label):
+    conv_pool_1 = fluid.nets.simple_img_conv_pool(
         input=img,
         filter_size=5,
         num_filters=20,
-        num_channel=1,
         pool_size=2,
         pool_stride=2,
-        act=paddle.activation.Relu())
-    # second conv layer
-    conv_pool_2 = paddle.networks.simple_img_conv_pool(
+        act="relu")
+    conv_pool_1 = fluid.layers.batch_norm(conv_pool_1)
+    conv_pool_2 = fluid.nets.simple_img_conv_pool(
         input=conv_pool_1,
         filter_size=5,
         num_filters=50,
-        num_channel=20,
         pool_size=2,
         pool_stride=2,
-        act=paddle.activation.Relu())
-    # fully-connected layer
-    predict = paddle.layer.fc(
-        input=conv_pool_2, size=10, act=paddle.activation.Softmax())
-    return predict
+        act="relu")
+    return loss_net(conv_pool_2, label)
 
 
-def main():
-    paddle.init(use_gpu=with_gpu, trainer_count=1)
+def train(nn_type,
+          use_cuda,
+          save_dirname=None,
+          model_filename=None,
+          params_filename=None):
+    if use_cuda and not fluid.core.is_compiled_with_cuda():
+        return
 
-    # define network topology
-    images = paddle.layer.data(
-        name='pixel', type=paddle.data_type.dense_vector(784))
-    label = paddle.layer.data(
-        name='label', type=paddle.data_type.integer_value(10))
+    img = fluid.layers.data(name='img', shape=[1, 28, 28], dtype='float32')
+    label = fluid.layers.data(name='label', shape=[1], dtype='int64')
 
-    # Here we can build the prediction network in different ways. Please
-    # choose one by uncomment corresponding line.
-    # predict = softmax_regression(images)
-    # predict = multilayer_perceptron(images)
-    predict = convolutional_neural_network(images)
+    if nn_type == 'softmax_regression':
+        net_conf = softmax_regression
+    elif nn_type == 'multilayer_perceptron':
+        net_conf = multilayer_perceptron
+    else:
+        net_conf = convolutional_neural_network
 
-    cost = paddle.layer.classification_cost(input=predict, label=label)
+    prediction, avg_loss, acc = net_conf(img, label)
 
-    parameters = paddle.parameters.create(cost)
+    test_program = fluid.default_main_program().clone(for_test=True)
 
-    optimizer = paddle.optimizer.Momentum(
-        learning_rate=0.1 / 128.0,
-        momentum=0.9,
-        regularization=paddle.optimizer.L2Regularization(rate=0.0005 * 128))
+    optimizer = fluid.optimizer.Adam(learning_rate=0.001)
+    optimizer.minimize(avg_loss)
 
-    trainer = paddle.trainer.SGD(
-        cost=cost, parameters=parameters, update_equation=optimizer)
+    def train_test(train_test_program, train_test_feed, train_test_reader):
+        acc_set = []
+        avg_loss_set = []
+        for test_data in train_test_reader():
+            acc_np, avg_loss_np = exe.run(
+                program=train_test_program,
+                feed=train_test_feed.feed(test_data),
+                fetch_list=[acc, avg_loss])
+            acc_set.append(float(acc_np))
+            avg_loss_set.append(float(avg_loss_np))
+        # get test acc and loss
+        acc_val_mean = numpy.array(acc_set).mean()
+        avg_loss_val_mean = numpy.array(avg_loss_set).mean()
+        return avg_loss_val_mean, acc_val_mean
+
+    place = fluid.CUDAPlace(0) if use_cuda else fluid.CPUPlace()
+
+    exe = fluid.Executor(place)
+
+    train_reader = paddle.batch(
+        paddle.reader.shuffle(paddle.dataset.mnist.train(), buf_size=500),
+        batch_size=BATCH_SIZE)
+    test_reader = paddle.batch(
+        paddle.dataset.mnist.test(), batch_size=BATCH_SIZE)
+    feeder = fluid.DataFeeder(feed_list=[img, label], place=place)
+
+    exe.run(fluid.default_startup_program())
+    main_program = fluid.default_main_program()
+    epochs = [epoch_id for epoch_id in range(PASS_NUM)]
 
     lists = []
+    step = 0
+    for epoch_id in epochs:
+        for step_id, data in enumerate(train_reader()):
+            metrics = exe.run(
+                main_program,
+                feed=feeder.feed(data),
+                fetch_list=[avg_loss, acc])
+            if step % 100 == 0:
+                print("Pass %d, Batch %d, Cost %f" % (step, epoch_id,
+                                                      metrics[0]))
+            step += 1
+        # test for epoch
+        avg_loss_val, acc_val = train_test(
+            train_test_program=test_program,
+            train_test_reader=test_reader,
+            train_test_feed=feeder)
 
-    def event_handler(event):
-        if isinstance(event, paddle.event.EndIteration):
-            if event.batch_id % 100 == 0:
-                print "Pass %d, Batch %d, Cost %f, %s" % (
-                    event.pass_id, event.batch_id, event.cost, event.metrics)
-        if isinstance(event, paddle.event.EndPass):
-            # save parameters
-            with open('params_pass_%d.tar' % event.pass_id, 'w') as f:
-                parameters.to_tar(f)
-
-            result = trainer.test(reader=paddle.batch(
-                paddle.dataset.mnist.test(), batch_size=128))
-            print "Test with Pass %d, Cost %f, %s\n" % (
-                event.pass_id, result.cost, result.metrics)
-            lists.append((event.pass_id, result.cost,
-                          result.metrics['classification_error_evaluator']))
-
-    trainer.train(
-        reader=paddle.batch(
-            paddle.reader.shuffle(paddle.dataset.mnist.train(), buf_size=8192),
-            batch_size=128),
-        event_handler=event_handler,
-        num_passes=5)
+        print("Test with Epoch %d, avg_cost: %s, acc: %s" %
+              (epoch_id, avg_loss_val, acc_val))
+        lists.append((epoch_id, avg_loss_val, acc_val))
+        if save_dirname is not None:
+            fluid.io.save_inference_model(
+                save_dirname, ["img"], [prediction],
+                exe,
+                model_filename=model_filename,
+                params_filename=params_filename)
 
     # find the best pass
     best = sorted(lists, key=lambda list: float(list[1]))[0]
-    print 'Best pass is %s, testing Avgcost is %s' % (best[0], best[1])
-    print 'The classification accuracy is %.2f%%' % (100 - float(best[2]) * 100)
+    print('Best pass is %s, testing Avgcost is %s' % (best[0], best[1]))
+    print('The classification accuracy is %.2f%%' % (float(best[2]) * 100))
+
+
+def infer(use_cuda,
+          save_dirname=None,
+          model_filename=None,
+          params_filename=None):
+    if save_dirname is None:
+        return
+
+    place = fluid.CUDAPlace(0) if use_cuda else fluid.CPUPlace()
+    exe = fluid.Executor(place)
 
     def load_image(file):
         im = Image.open(file).convert('L')
         im = im.resize((28, 28), Image.ANTIALIAS)
-        im = np.array(im).astype(np.float32).flatten()
-        im = im / 255.0
+        im = numpy.array(im).reshape(1, 1, 28, 28).astype(numpy.float32)
+        im = im / 255.0 * 2.0 - 1.0
         return im
 
-    test_data = []
     cur_dir = os.path.dirname(os.path.realpath(__file__))
-    test_data.append((load_image(cur_dir + '/image/infer_3.png'), ))
+    tensor_img = load_image(cur_dir + '/image/infer_3.png')
 
-    probs = paddle.infer(
-        output_layer=predict, parameters=parameters, input=test_data)
-    lab = np.argsort(-probs)  # probs and lab are the results of one batch data
-    print "Label of image/infer_3.png is: %d" % lab[0][0]
+    inference_scope = fluid.core.Scope()
+    with fluid.scope_guard(inference_scope):
+        # Use fluid.io.load_inference_model to obtain the inference program desc,
+        # the feed_target_names (the names of variables that will be feeded
+        # data using feed operators), and the fetch_targets (variables that
+        # we want to obtain data from using fetch operators).
+        [inference_program, feed_target_names,
+         fetch_targets] = fluid.io.load_inference_model(
+             save_dirname, exe, model_filename, params_filename)
+
+        # Construct feed as a dictionary of {feed_target_name: feed_target_data}
+        # and results will contain a list of data corresponding to fetch_targets.
+        results = exe.run(
+            inference_program,
+            feed={feed_target_names[0]: tensor_img},
+            fetch_list=fetch_targets)
+        lab = numpy.argsort(results)
+        print("Inference result of image/infer_3.png is: %d" % lab[0][0][-1])
+
+
+def main(use_cuda, nn_type):
+    model_filename = None
+    params_filename = None
+    save_dirname = "recognize_digits_" + nn_type + ".inference.model"
+
+    # call train() with is_local argument to run distributed train
+    train(
+        nn_type=nn_type,
+        use_cuda=use_cuda,
+        save_dirname=save_dirname,
+        model_filename=model_filename,
+        params_filename=params_filename)
+    infer(
+        use_cuda=use_cuda,
+        save_dirname=save_dirname,
+        model_filename=model_filename,
+        params_filename=params_filename)
 
 
 if __name__ == '__main__':
-    main()
+    use_cuda = False
+    # predict = 'softmax_regression' # uncomment for Softmax
+    # predict = 'multilayer_perceptron' # uncomment for MLP
+    predict = 'convolutional_neural_network'  # uncomment for LeNet5
+    main(use_cuda=use_cuda, nn_type=predict)
